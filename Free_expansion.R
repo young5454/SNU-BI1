@@ -4,6 +4,7 @@
 # 1. Load libraries & Set workspace
 # ------------------------------------------------------------------------------
 library(biomaRt)
+library(latex2exp)
 library(clusterProfiler)
 library(ggplot2)
 library(colorRamp2)
@@ -65,5 +66,52 @@ rna.counts <- rowSums(meta.counts[, c(7,8,9)])
 ## Filter 2. <80 raw footprint tags in siLuc library
 ribo.counts <- meta.counts$RPF.siLuc
 
-filtered.meta.counts <- meta.counts[rna.counts >= 30 & ribo.counts >= 80, ]
-nrow(filtered.meta.counts)  # 55158 -> 8154
+filt.meta.counts <- meta.counts[rna.counts >= 30 & ribo.counts >= 80, ]
+nrow(filt.meta.counts)  # 55158 -> 8154
+
+# ------------------------------------------------------------------------------
+# 4. Calculate CLIP enrichment & Rden change
+# ------------------------------------------------------------------------------
+## CLIP-enrichment
+### Normalize by dividing with total read sum of filtered counts
+norm.clip.35L33G <- filt.meta.counts$CLIP.35L33G / sum(filt.meta.counts$CLIP.35L33G)
+norm.rna.control <- filt.meta.counts$RNA.control / sum(filt.meta.counts$RNA.control)
+clip.enrichment <- log2(norm.clip.35L33G / norm.rna.control)  
+
+## Rden change
+### Normalize by dividing with total read sum of filtered counts
+density.silin28a <- filt.meta.counts$RPF.siLin28a / filt.meta.counts$RNA.siLin28a
+density.siluc <- filt.meta.counts$RPF.siLuc / filt.meta.counts$RNA.siLuc
+rden.change <- log2(density.silin28a / density.siluc)
+
+## Merge data to counts
+filt.meta.counts$CLIP.Enrichment <- clip.enrichment
+filt.meta.counts$Rden.Change <- rden.change
+clip.rden2 <- data.frame(clip.enrichment, rden.change)
+
+## Plot - Fig4D
+scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) + 
+            geom_point(size=0.2, alpha=0.25) + 
+            labs(title=TeX("CLIP and ribosome footrprinting upon $\\textit{Lin28a}$ knockdown"),
+            x=TeX("LIN28A CLIP enrichment ($\\log_2$)"), 
+            y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)")) +
+            coord_cartesian(xlim=c(-6, 4), ylim=c(-3, 2), expand=FALSE) +
+            theme_classic() +
+            theme(
+              panel.grid.major=element_line(color="gray", size=0.25),
+              panel.background=element_rect(fill="white"),
+              plot.background=element_rect(fill="white"),
+              plot.title=element_text(family="Arial", size=9),
+              axis.title.x=element_text(family="Arial", size=9),
+              axis.title.y=element_text(family="Arial", size=9),
+              axis.ticks=element_line(size=0.25),
+              axis.line=element_line(size=0.25),
+              axis.line.x.top=element_blank(),      # Remove top axis line
+              axis.line.y.right=element_blank() 
+            )
+ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.png", 
+       width=4, height=4, units='in', dpi=600)
+
+
+
+
