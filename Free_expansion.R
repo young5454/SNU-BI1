@@ -1,4 +1,4 @@
-################################################################################
+# ------------------------------------------------------------------------------
 # Script to conduct GO analysis of CLIP-seq & Ribo-footprinting data [052824]
 # ------------------------------------------------------------------------------
 # 1. Load libraries & Set workspace
@@ -60,8 +60,10 @@ write.table(meta.counts, "./SNU-BI1.Data/meta.counts.csv", sep=",")
 # 3. Filter counts 
 # ------------------------------------------------------------------------------
 ## Filter 1. <30 reads in RNA-seq
-rna.counts <- rowSums(meta.counts[, -(1:5)])
-filtered.meta.counts <- meta.counts[rna.counts >= 30, ]   # 55158 -> 19312
+rna.counts <- rowSums(meta.counts[, c(7,8,9)])
 
-## Filter 2. <80 raw footprint tags
+## Filter 2. <80 raw footprint tags in siLuc library
+ribo.counts <- meta.counts$RPF.siLuc
 
+filtered.meta.counts <- meta.counts[rna.counts >= 30 & ribo.counts >= 80, ]
+nrow(filtered.meta.counts)  # 55158 -> 8154
