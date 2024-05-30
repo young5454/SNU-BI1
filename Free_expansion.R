@@ -5,6 +5,7 @@
 # ------------------------------------------------------------------------------
 library(biomaRt)
 library(latex2exp)
+library(org.Mm.eg.db)
 library(clusterProfiler)
 library(ggplot2)
 library(colorRamp2)
@@ -93,25 +94,41 @@ clip.rden2 <- data.frame(clip.enrichment, rden.change)
 scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) + 
             geom_point(size=0.2, alpha=0.25) + 
             labs(title=TeX("CLIP and ribosome footrprinting upon $\\textit{Lin28a}$ knockdown"),
-            x=TeX("LIN28A CLIP enrichment ($\\log_2$)"), 
-            y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)")) +
+                 x=TeX("LIN28A CLIP enrichment ($\\log_2$)"), 
+                 y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)")) +
             coord_cartesian(xlim=c(-6, 4), ylim=c(-3, 2), expand=FALSE) +
             theme_classic() +
             theme(
               panel.grid.major=element_line(color="gray", size=0.25),
               panel.background=element_rect(fill="white"),
               plot.background=element_rect(fill="white"),
-              plot.title=element_text(family="Arial", size=9),
+              plot.title=element_text(family="Arial", size=9.5),
               axis.title.x=element_text(family="Arial", size=9),
               axis.title.y=element_text(family="Arial", size=9),
+              axis.text.x=element_text(size=11),
+              axis.text.y=element_text(size=11),
               axis.ticks=element_line(size=0.25),
               axis.line=element_line(size=0.25),
               axis.line.x.top=element_blank(),      # Remove top axis line
-              axis.line.y.right=element_blank() 
-            )
+              axis.line.y.right=element_blank())
 ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.png", 
        width=4, height=4, units='in', dpi=600)
 
+# ------------------------------------------------------------------------------
+# 4. GO over-representation analysis
+# ------------------------------------------------------------------------------
+## Define gene set for GO analysis
+filt.gene.list <- filt.meta.counts$GeneID
 
+## Run
+GO.result <- enrichGO(gene=filt.gene.list,
+                      OrgDb="org.Mm.eg.db",
+                      keyType="ENSEMBL",
+                      ont="BP",
+                      pAdjustMethod="BH",
+                      pvalueCutoff=0.05,
+                      qvalueCutoff=0.05)
+GO.result <- as.data.frame(GO.result)
+nrow(GO.result)   # 2514 GO terms enriched
 
 
