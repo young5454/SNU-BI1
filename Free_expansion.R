@@ -90,6 +90,9 @@ filt.meta.counts$CLIP.Enrichment <- clip.enrichment
 filt.meta.counts$Rden.Change <- rden.change
 clip.rden2 <- data.frame(clip.enrichment, rden.change)
 
+## Save filtered counts
+write.table(filt.meta.counts, "./SNU-BI1.Data/filt.meta.counts.csv", sep=",")
+
 ## Plot - Fig4D
 scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) + 
             geom_point(size=0.2, alpha=0.25) + 
@@ -115,20 +118,32 @@ ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.png",
        width=4, height=4, units='in', dpi=600)
 
 # ------------------------------------------------------------------------------
-# 4. GO over-representation analysis
+# 4. Map GO terms
 # ------------------------------------------------------------------------------
-## Define gene set for GO analysis
+## Define gene list
 filt.gene.list <- filt.meta.counts$GeneID
 
-## Run
-GO.result <- enrichGO(gene=filt.gene.list,
-                      OrgDb="org.Mm.eg.db",
-                      keyType="ENSEMBL",
-                      ont="BP",
-                      pAdjustMethod="BH",
-                      pvalueCutoff=0.05,
-                      qvalueCutoff=0.05)
-GO.result <- as.data.frame(GO.result)
-nrow(GO.result)   # 2514 GO terms enriched
+## Download Mapping Table - 2024.05.29 last mod.
+## Download GOA DB - 2024.04.16 last mod.
+mus.goa <- readLines("./SNU-BI1.Data/goa_mouse.gaf")
+mus.goa <- mus.goa[!grepl("^!", mus.goa)]
+mus.goa <- strsplit(mus.goa, "\t")
+mus.goa.df <- do.call(rbind, mus.goa)
+mus.goa.df <- as.data.frame(mus.goa.df)
+mus.goa.df <- subset(mus.goa.df, select=-ncol(mus.goa.df))
+
+## Rename GOA columns
+colnames(mus.goa.df) <- c("DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier",
+                          "GO_ID", "DB:Reference", "Evidence_Code", "With_From",
+                          "Aspect", "DB_Object_Name", "DB_Object_Synonym", 
+                          "DB_Object_Type", "Taxon", "Date", "Assigned_By")
+
+## Map MGIsymbol to GO term
+go.matched <- mus.goa.df[mus.goa.df$DB_Object_Symbol %in% filt.meta.counts$MGIsymbol, ]
+mapping.table <- go.matched[, c(3, 5)]   # Total 7706 / 8154 genes are mapped
+
+
+
+
 
 
