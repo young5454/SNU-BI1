@@ -118,7 +118,7 @@ ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.png",
        width=4, height=4, units='in', dpi=600)
 
 # ------------------------------------------------------------------------------
-# 4. Map GO terms
+# 5. Map GO terms
 # ------------------------------------------------------------------------------
 ## Define gene list
 filt.gene.list <- filt.meta.counts$GeneID
