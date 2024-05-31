@@ -158,4 +158,79 @@ go.to.genes <- mapping.table %>%
   summarise(GeneList = list(unique(DB_Object_Symbol)),
             GO_Description = unique(GO_Description))  # 14157 unique GO terms  
 
+# ------------------------------------------------------------------------------
+# 7. Mann-Whitney U test for each GO term
+# ------------------------------------------------------------------------------
+## Define a function for Mann-Whitney U test
+mw_rden <- function(go_to_genes, rden_df){
+  
+  ## Initialize a list to store p-values
+  results <- list()
+
+  for (i in 1:nrow(go_to_genes)) {
+    ## Define current GO term and Gene set
+    go.term <- go_to_genes$GO_ID[i]
+    gene.set <- go_to_genes$GeneList[[i]]
+    
+    ## Create a logical vector
+    rden_df$In_GO <- rden_df$MGIsymbol %in% gene.set
+    
+    ## Perform the Mann-Whitney U test
+    mw.test <- wilcox.test(Rden.Change ~ In_GO, data=rden_df)
+    
+    # Store the p-value result
+    results[[go.term]] <- mw.test$p.value
+  }
+  ## # Convert the list of p-values to a vector
+  p.values <- unlist(results)
+  
+  ## Adjust the p-values using the Benjamini-Hochberg method
+  p.adj <- p.adjust(p.values, method="BH")
+  
+  ## Combine results into a dataframe
+  results.df <- data.frame(
+    GO_ID=names(results),
+    GO_Description=go_to_genes$GO_Description,
+    pvalue=p.values,
+    p.adj=p.adj
+  )
+  ## Return results dataframe
+  return(results.df)
+}
+
+## Test data to see if code runs
+test.go.to.genes <- data.frame(
+  GO_ID = c("GO:0008150", "GO:0003674", "GO:0005575"),
+  GeneList = I(list(c("Gene1", "Gene2"), c("Gene2", "Gene3"), c("Gene3", "Gene4"))),
+  GO_Description = c("Biological Process", "Molecular Function", "Cellular Component")
+)
+
+test.gene.rden <- data.frame(
+  MGIsymbol = c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5"),
+  Rden.Change = c(2.3, 3.5, 1.2, 4.7, 0.9)
+)
+
+test.results.df <- mw_rden(go_to_genes = test.go.to.genes,
+        rden_df = test.gene.rden)
+
+## Define a Rden df (MGIsymbol : Rden.Change)
+rden.df <- filt.meta.counts[, c(3, 13)]
+
+## Run
+mw.results <- mw_rden(go_to_genes=go.to.genes,
+                      rden_df=rden.df)
+
+## Sort according to P.adj
+mw.results.sorted <- mw.results[order(mw.results$p.adj), ]
+head(mw.results.sorted, 30)
+
+
+
+
+
+
+
+
+
+
 
