@@ -6,6 +6,8 @@
 library(biomaRt)
 library(latex2exp)
 library(org.Mm.eg.db)
+library(dplyr)
+library(GO.db)
 library(clusterProfiler)
 library(ggplot2)
 library(colorRamp2)
@@ -142,8 +144,18 @@ colnames(mus.goa.df) <- c("DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier",
 go.matched <- mus.goa.df[mus.goa.df$DB_Object_Symbol %in% filt.meta.counts$MGIsymbol, ]
 mapping.table <- go.matched[, c(3, 5)]   # Total 7706 / 8154 genes are mapped
 
+## Map GO term to GO description
+go.terms <- mapping.table$GO_ID
+all.terms <- Term(GOTERM)
+matched.descriptions <- all.terms[go.terms]
+mapping.table$GO_Description <- matched.descriptions
 
-
-
+# ------------------------------------------------------------------------------
+# 6. GO term-to-Genelist Conversion
+# ------------------------------------------------------------------------------
+go.to.genes <- mapping.table %>% 
+  group_by(GO_ID) %>%
+  summarise(GeneList = list(unique(DB_Object_Symbol)),
+            GO_Description = unique(GO_Description))  # 14157 unique GO terms  
 
 
