@@ -65,12 +65,18 @@ write.table(meta.counts, "./SNU-BI1.Data/meta.counts.csv", sep=",")
 # ------------------------------------------------------------------------------
 ## Filter 1. <30 reads in RNA-seq
 rna.counts <- rowSums(meta.counts[, c(7,8,9)])
+rna.counts1 <- meta.counts$RNA.control
+rna.counts2 <- meta.counts$RNA.siLin28a
+rna.counts3 <- meta.counts$RNA.siLuc
 
 ## Filter 2. <80 raw footprint tags in siLuc library
 ribo.counts <- meta.counts$RPF.siLuc
 
-filt.meta.counts <- meta.counts[rna.counts >= 30 & ribo.counts >= 80, ]
-nrow(filt.meta.counts)  # 55158 -> 8154
+filt.meta.counts <- meta.counts[rna.counts1 >= 30 &
+                                rna.counts2 >= 30 &
+                                rna.counts3 >=30 & 
+                                ribo.counts >= 80, ]
+nrow(filt.meta.counts)  # 55158 -> 8154 (7987)
 
 # ------------------------------------------------------------------------------
 # 4. Calculate CLIP enrichment & Rden change
@@ -85,12 +91,20 @@ clip.enrichment <- log2(norm.clip.35L33G / norm.rna.control)
 ### Normalize by dividing with total read sum of filtered counts
 density.silin28a <- filt.meta.counts$RPF.siLin28a / filt.meta.counts$RNA.siLin28a
 density.siluc <- filt.meta.counts$RPF.siLuc / filt.meta.counts$RNA.siLuc
-rden.change <- log2(density.silin28a / density.siluc)
+
+norm.density.silin28a <- density.silin28a / 
+  (sum(filt.meta.counts$RPF.siLin28a) + sum(filt.meta.counts$RNA.siLin28a))
+norm.density.siluc <- density.siluc / 
+  (sum(filt.meta.counts$RPF.siLuc) + sum(filt.meta.counts$RNA.siLuc))
+rden.change <- log2(norm.density.silin28a / norm.density.siluc)
 
 ## Merge data to counts
 filt.meta.counts$CLIP.Enrichment <- clip.enrichment
 filt.meta.counts$Rden.Change <- rden.change
 clip.rden2 <- data.frame(clip.enrichment, rden.change)
+
+## Filter any +/- Inf values
+filt.meta.counts <- filt.meta.counts[!is.infinite(filt.meta.counts$CLIP.Enrichment), ]
 
 ## Save filtered counts
 write.table(filt.meta.counts, "./SNU-BI1.Data/filt.meta.counts.csv", sep=",")
@@ -116,7 +130,7 @@ scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) +
               axis.line=element_line(size=0.25),
               axis.line.x.top=element_blank(),      # Remove top axis line
               axis.line.y.right=element_blank())
-ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.png", 
+ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.ver2.png", 
        width=4, height=4, units='in', dpi=600)
 
 # ------------------------------------------------------------------------------
@@ -142,7 +156,8 @@ colnames(mus.goa.df) <- c("DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier",
 
 ## Map MGIsymbol to GO term
 go.matched <- mus.goa.df[mus.goa.df$DB_Object_Symbol %in% filt.meta.counts$MGIsymbol, ]
-mapping.table <- go.matched[, c(3, 5)]   # Total 7706 / 8154 genes are mapped
+mapping.table <- go.matched[, c(3, 5)]   
+length(unique(mapping.table$DB_Object_Symbol)) # Total 7706 (7586) / 8154 (7987) genes are mapped
 
 ## Map GO term to GO description
 go.terms <- mapping.table$GO_ID
@@ -156,7 +171,8 @@ mapping.table$GO_Description <- matched.descriptions
 go.to.genes <- mapping.table %>% 
   group_by(GO_ID) %>%
   summarise(GeneList = list(unique(DB_Object_Symbol)),
-            GO_Description = unique(GO_Description))  # 14157 unique GO terms  
+            GO_Description = unique(GO_Description))  
+nrow(go.to.genes)   # 14157 (14018) unique GO terms  
 
 # ------------------------------------------------------------------------------
 # 7. Mann-Whitney U test for each GO term
@@ -164,13 +180,15 @@ go.to.genes <- mapping.table %>%
 ## Define a function for Mann-Whitney U test
 mw_rden <- function(go_to_genes, rden_df){
   
-  ## Initialize a list to store p-values
+  ## Initialize a list to store p-values and number of genes
   results <- list()
+  num.genes.list <- list()
 
   for (i in 1:nrow(go_to_genes)) {
     ## Define current GO term and Gene set
     go.term <- go_to_genes$GO_ID[i]
     gene.set <- go_to_genes$GeneList[[i]]
+    num.genes <- length(gene.set)
     
     ## Create a logical vector
     rden_df$In_GO <- rden_df$MGIsymbol %in% gene.set
@@ -178,11 +196,13 @@ mw_rden <- function(go_to_genes, rden_df){
     ## Perform the Mann-Whitney U test
     mw.test <- wilcox.test(Rden.Change ~ In_GO, data=rden_df)
     
-    # Store the p-value result
+    # Store the p-value and number of genes
     results[[go.term]] <- mw.test$p.value
+    num.genes.list[[go.term]] <- num.genes
   }
   ## # Convert the list of p-values to a vector
   p.values <- unlist(results)
+  num.genes.list <- unlist(num.genes.list)
   
   ## Adjust the p-values using the Benjamini-Hochberg method
   p.adj <- p.adjust(p.values, method="BH")
@@ -191,27 +211,13 @@ mw_rden <- function(go_to_genes, rden_df){
   results.df <- data.frame(
     GO_ID=names(results),
     GO_Description=go_to_genes$GO_Description,
+    Num_Genes=num.genes.list,
     pvalue=p.values,
     p.adj=p.adj
   )
   ## Return results dataframe
   return(results.df)
 }
-
-## Test data to see if code runs
-test.go.to.genes <- data.frame(
-  GO_ID = c("GO:0008150", "GO:0003674", "GO:0005575"),
-  GeneList = I(list(c("Gene1", "Gene2"), c("Gene2", "Gene3"), c("Gene3", "Gene4"))),
-  GO_Description = c("Biological Process", "Molecular Function", "Cellular Component")
-)
-
-test.gene.rden <- data.frame(
-  MGIsymbol = c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5"),
-  Rden.Change = c(2.3, 3.5, 1.2, 4.7, 0.9)
-)
-
-test.results.df <- mw_rden(go_to_genes = test.go.to.genes,
-        rden_df = test.gene.rden)
 
 ## Define a Rden df (MGIsymbol : Rden.Change)
 rden.df <- filt.meta.counts[, c(3, 13)]
@@ -224,13 +230,64 @@ mw.results <- mw_rden(go_to_genes=go.to.genes,
 mw.results.sorted <- mw.results[order(mw.results$p.adj), ]
 head(mw.results.sorted, 30)
 
+## Save Mann-Whitney U test results
+write.table(mw.results.sorted, "./SNU-BI1.Data/mann.whitney.results.csv", sep=",")
+
+# ------------------------------------------------------------------------------
+# 8. Filter Mann-Whitney U test data
+# ------------------------------------------------------------------------------
+## Select GO terms with FDR < 0.05
+sig.mw.results <- mw.results.sorted[which(abs(mw.results.sorted$p.adj)<0.05),]
+nrow(sig.mw.results)   # 429 (431) unique GO terms
+
+# ------------------------------------------------------------------------------
+# 9. Calculate average CLIP enrichment and Rden Change
+# ------------------------------------------------------------------------------
+## Average CLIP enrichment for each GO term
+go.term <- "GO:0005634"
+gene.set <- unlist(go.to.genes[go.to.genes$GO_ID == go.term, ]$GeneList)
+
+matched <- filt.meta.counts[filt.meta.counts$MGIsymbol %in% gene.set, ]
+avg.clip.enrichment <- sum(matched$CLIP.Enrichment) / nrow(matched)
+avg.rden.change <- sum(matched$Rden.Change) / nrow(matched)
+
+clip.enrich.list <- list()
+rden.change.list <- list()
+
+for (i in 1:length(sig.mw.results$GO_ID)){
+  ## Define current GO term
+  go.term <- sig.mw.results$GO_ID[i]
+  ## Bring gene sets for current GO term
+  gene.set <- unlist(go.to.genes[go.to.genes$GO_ID == go.term, ]$GeneList)
+  
+  ## Build matched counts-df
+  matched <- filt.meta.counts[filt.meta.counts$MGIsymbol %in% gene.set, ]
+  
+  ## Calculate average values
+  avg.clip.enrichment <- sum(matched$CLIP.Enrichment) / nrow(matched)
+  avg.rden.change <- sum(matched$Rden.Change) / nrow(matched)
+  
+  clip.enrich.list[[i]] <- avg.clip.enrichment
+  rden.change.list[[i]] <- avg.rden.change
+}
+clip.enrich.list <- unlist(clip.enrich.list)
+rden.change.list <- unlist(rden.change.list)
+
+## Add values to MW dataframe
+sig.mw.results$Avg_CLIP <- clip.enrich.list
+sig.mw.results$Avg_Rden <- rden.change.list
 
 
-
-
-
-
-
-
-
+## Bubble Plot
+ggplot(sig.mw.results, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
+  geom_point(alpha=1) +
+  coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 2), expand=FALSE) +
+  scale_size_area(max_size = 20) +
+  scale_color_gradient2(high="red", low="white") +
+  guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3, "inch"))) +
+  labs(title = "Bubble Plot of GO Terms",
+       x = "Avg_CLIP",
+       y = "Avg_Rden",
+       color = "Adjusted P-Value") +
+  theme_minimal()
 
