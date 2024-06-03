@@ -17,8 +17,8 @@ setwd("/home/local/hoeyoungkim_000504/coursework/")
 # ------------------------------------------------------------------------------
 # 2. Match annotation to raw counts
 # ------------------------------------------------------------------------------
-## Load raw counts data generated with FeatureCounts
-raw.counts <- read.csv("./SNU-BI1.Data/raw.counts.txt", sep="\t", header=TRUE)
+## Load raw counts data generated with FeatureCounts (Multimapping primary)
+raw.counts <- read.csv("./SNU-BI1.Data/raw.counts.mm.txt", sep="\t", header=TRUE)
 
 ## Rename header row
 header <- c("GeneID", "Chr", "Start", "End", "Strand", "Length",
@@ -36,10 +36,10 @@ gene_ids <- raw.counts$GeneID
 duplicates <- gene_ids[duplicated(gene_ids)]
 duplicates   # 0
 
+## Remove version info from gene IDs
 gene_ids <- sub("\\..*", "", gene_ids)
 duplicates <- gene_ids[duplicated(gene_ids)]
 duplicates   # 0
-
 raw.counts$GeneID <- gene_ids
 
 ## Match MGI-symbol and Description using BiomaRt
@@ -76,7 +76,7 @@ filt.meta.counts <- meta.counts[rna.counts1 >= 30 &
                                 rna.counts2 >= 30 &
                                 rna.counts3 >=30 & 
                                 ribo.counts >= 80, ]
-nrow(filt.meta.counts)  # 55158 -> 8154 (7987)
+nrow(filt.meta.counts)  # 55158 -> 9004
 
 # ------------------------------------------------------------------------------
 # 4. Calculate CLIP enrichment & Rden change
@@ -124,13 +124,13 @@ scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) +
               plot.title=element_text(family="Arial", size=9.5),
               axis.title.x=element_text(family="Arial", size=9),
               axis.title.y=element_text(family="Arial", size=9),
-              axis.text.x=element_text(size=11),
-              axis.text.y=element_text(size=11),
+              axis.text.x=element_text(size=11, color="black"),
+              axis.text.y=element_text(size=11, color="black"),
               axis.ticks=element_line(size=0.25),
               axis.line=element_line(size=0.25),
               axis.line.x.top=element_blank(),      # Remove top axis line
               axis.line.y.right=element_blank())
-ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.ver2.png", 
+ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.ver3.png", 
        width=4, height=4, units='in', dpi=600)
 
 # ------------------------------------------------------------------------------
@@ -157,13 +157,16 @@ colnames(mus.goa.df) <- c("DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier",
 ## Map MGIsymbol to GO term
 go.matched <- mus.goa.df[mus.goa.df$DB_Object_Symbol %in% filt.meta.counts$MGIsymbol, ]
 mapping.table <- go.matched[, c(3, 5)]   
-length(unique(mapping.table$DB_Object_Symbol)) # Total 7706 (7586) / 8154 (7987) genes are mapped
+length(unique(mapping.table$DB_Object_Symbol)) # Total 7760 / 9004 genes are mapped
 
 ## Map GO term to GO description
 go.terms <- mapping.table$GO_ID
 all.terms <- Term(GOTERM)
 matched.descriptions <- all.terms[go.terms]
 mapping.table$GO_Description <- matched.descriptions
+
+## Remove any redundant rows
+mapping.table <- mapping.table %>% distinct()
 
 # ------------------------------------------------------------------------------
 # 6. GO term-to-Genelist Conversion
@@ -172,7 +175,7 @@ go.to.genes <- mapping.table %>%
   group_by(GO_ID) %>%
   summarise(GeneList = list(unique(DB_Object_Symbol)),
             GO_Description = unique(GO_Description))  
-nrow(go.to.genes)   # 14157 (14018) unique GO terms  
+nrow(go.to.genes)   # 14128 unique GO terms  
 
 # ------------------------------------------------------------------------------
 # 7. Mann-Whitney U test for each GO term
@@ -234,29 +237,50 @@ head(mw.results.sorted, 30)
 write.table(mw.results.sorted, "./SNU-BI1.Data/mann.whitney.results.csv", sep=",")
 
 # ------------------------------------------------------------------------------
-# 8. Filter Mann-Whitney U test data
+# 8. Filter Mann-Whitney U test data & Remove subset terms
 # ------------------------------------------------------------------------------
 ## Select GO terms with FDR < 0.05
 sig.mw.results <- mw.results.sorted[which(abs(mw.results.sorted$p.adj)<0.05),]
-nrow(sig.mw.results)   # 429 (431) unique GO terms
+nrow(sig.mw.results)   # 446 unique GO terms
+
+## Retrive all Gene sets for each GO terms
+sig.go.to.genes <-  go.to.genes[go.to.genes$GO_ID %in% sig.mw.results$GO_ID, ]
+
+## For each GeneList, check if subset
+subset <- vector("numeric", nrow(sig.go.to.genes))
+
+for (i in 1:nrow(sig.go.to.genes)) {
+  gene.set <- unlist(sig.go.to.genes$GeneList[i])
+  is_subset <- FALSE
+  for (j in setdiff(1:nrow(sig.go.to.genes), i)) {
+    other.gene.set <- unlist(sig.go.to.genes$GeneList[j])
+    if (all(gene.set %in% other.gene.set)) {
+      is_subset <- TRUE
+      break
+    }
+  }
+  subset[i] <- ifelse(is_subset, 1, 0)
+}
+
+sig.go.to.genes$IsSubset <- subset
+
+## Remove all subset terms
+sig.non.subset <- sig.go.to.genes[sig.go.to.genes$IsSubset==0, ]
+nrow(sig.non.subset)  # 446 -> 383 
+
+## Filter M-W test results
+sig.mw.non.subset <- sig.mw.results[sig.mw.results$GO_ID %in% sig.non.subset$GO_ID, ]
 
 # ------------------------------------------------------------------------------
 # 9. Calculate average CLIP enrichment and Rden Change
 # ------------------------------------------------------------------------------
 ## Average CLIP enrichment for each GO term
-go.term <- "GO:0005634"
-gene.set <- unlist(go.to.genes[go.to.genes$GO_ID == go.term, ]$GeneList)
-
-matched <- filt.meta.counts[filt.meta.counts$MGIsymbol %in% gene.set, ]
-avg.clip.enrichment <- sum(matched$CLIP.Enrichment) / nrow(matched)
-avg.rden.change <- sum(matched$Rden.Change) / nrow(matched)
-
 clip.enrich.list <- list()
 rden.change.list <- list()
 
-for (i in 1:length(sig.mw.results$GO_ID)){
+for (i in 1:length(sig.mw.non.subset$GO_ID)){
   ## Define current GO term
-  go.term <- sig.mw.results$GO_ID[i]
+  go.term <- sig.mw.non.subset$GO_ID[i]
   ## Bring gene sets for current GO term
   gene.set <- unlist(go.to.genes[go.to.genes$GO_ID == go.term, ]$GeneList)
   
@@ -274,20 +298,52 @@ clip.enrich.list <- unlist(clip.enrich.list)
 rden.change.list <- unlist(rden.change.list)
 
 ## Add values to MW dataframe
-sig.mw.results$Avg_CLIP <- clip.enrich.list
-sig.mw.results$Avg_Rden <- rden.change.list
+sig.mw.non.subset$Avg_CLIP <- clip.enrich.list
+sig.mw.non.subset$Avg_Rden <- rden.change.list
 
+# ------------------------------------------------------------------------------
+# 10. Plot Bubble Plot
+# ------------------------------------------------------------------------------
+# Reorder by p.adj so smaller p-values are plotted on top
+sig.mw.non.subset <- sig.mw.non.subset[order(-sig.mw.non.subset$p.adj), ]
+
+# Define breaks for the color scale in log10 space
+log_breaks <- 10^seq(0, -50, by=-5)
 
 ## Bubble Plot
-ggplot(sig.mw.results, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
-  geom_point(alpha=1) +
-  coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 2), expand=FALSE) +
-  scale_size_area(max_size = 20) +
-  scale_color_gradient2(high="red", low="white") +
-  guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3, "inch"))) +
-  labs(title = "Bubble Plot of GO Terms",
-       x = "Avg_CLIP",
-       y = "Avg_Rden",
-       color = "Adjusted P-Value") +
-  theme_minimal()
+bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
+            geom_point(alpha=0.8) +
+            coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 1), expand=FALSE) +
+            scale_size_area(max_size=15, guide=FALSE) +
+            scale_color_gradientn(colors=c("#003da8ff", "#e5eeffff"),
+                                  trans="log10",
+                                  limits=c(1e-50, 1),
+                                  breaks=log_breaks,
+                                  labels=scales::trans_format("log10", scales::math_format(10^.x)),
+                                  oob=scales::squish) +
+            guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3.4, "inch"),
+                                          label.position="right", 
+                                          title.position="left", 
+                                          title.theme=element_text(angle=90, size=9.5, vjust=0.2))) +
+            labs(x=TeX("Enrichment level of LIN28A-bound CLIP tags ($\\log_2$)"),
+                 y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)"),
+                 color="Term-specific enrichment confidence (False Discovery Rate)") +
+            scale_x_continuous(breaks=seq(-2, 2, by=0.5)) +
+            scale_y_continuous(breaks=seq(-2, 1, by=0.5)) +
+            theme(plot.background=element_rect(fill = "white"),
+                  panel.background=element_rect(fill=NA),
+                  panel.grid.major=element_line(colour="grey", linetype="dashed", size=0.25),
+                  panel.border = element_rect(color = "black", fill = NA, size=0.5),
+                  plot.title=element_text(family="Arial", size=9.5),
+                  axis.title.x=element_text(family="Arial", size=10),
+                  axis.title.y=element_text(family="Arial", size=10),
+                  axis.text.x=element_text(size=8, color="black"),
+                  axis.text.y=element_text(size=8, color="black"),
+                  axis.ticks=element_line(size=0.25),
+                  axis.ticks.x.top=element_line(size=0.25),
+                  axis.ticks.y.right=element_line(size=0.25),
+                  axis.ticks.length=unit(-2, "pt"))
+
+ggsave(bubble, filename="./SNU-BI1/FreeExpansionPlots/bubble.png", 
+       width=9, height=4, units='in', dpi=300)
 
