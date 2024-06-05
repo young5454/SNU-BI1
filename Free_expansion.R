@@ -10,7 +10,7 @@ library(dplyr)
 library(GO.db)
 library(clusterProfiler)
 library(ggplot2)
-library(colorRamp2)
+library(ggrepel)
 
 setwd("/home/local/hoeyoungkim_000504/coursework/")
 
@@ -248,6 +248,7 @@ sig.go.to.genes <-  go.to.genes[go.to.genes$GO_ID %in% sig.mw.results$GO_ID, ]
 
 ## For each GeneList, check if subset
 subset <- vector("numeric", nrow(sig.go.to.genes))
+subset.of <- vector("numeric", nrow(sig.go.to.genes))
 
 for (i in 1:nrow(sig.go.to.genes)) {
   gene.set <- unlist(sig.go.to.genes$GeneList[i])
@@ -256,6 +257,7 @@ for (i in 1:nrow(sig.go.to.genes)) {
     other.gene.set <- unlist(sig.go.to.genes$GeneList[j])
     if (all(gene.set %in% other.gene.set)) {
       is_subset <- TRUE
+      subset.of[i] <- j
       break
     }
   }
@@ -263,6 +265,7 @@ for (i in 1:nrow(sig.go.to.genes)) {
 }
 
 sig.go.to.genes$IsSubset <- subset
+sig.go.to.genes$SubsetOf <- subset.of
 
 ## Remove all subset terms
 sig.non.subset <- sig.go.to.genes[sig.go.to.genes$IsSubset==0, ]
@@ -310,9 +313,27 @@ sig.mw.non.subset <- sig.mw.non.subset[order(-sig.mw.non.subset$p.adj), ]
 # Define breaks for the color scale in log10 space
 log_breaks <- 10^seq(0, -50, by=-5)
 
+# Select the target pathways for labeling
+target.GO <- sig.mw.non.subset[c("GO:0005737", "GO:0005634", "GO:0006334",
+                                 "GO:0005794", "GO:0005509", "GO:0009986",
+                                 "GO:0005788", "GO:0005539", "GO:0005789",
+                                 "GO:0005576", "GO:0005783", "GO:0005739"), ]
+# Label for target GO
+target.label <- list()
+for (i in 1:length(target.GO$GO_ID)){
+  label <- paste0(target.GO$GO_Description[i], "\n",
+                  target.GO$GO_ID[i],
+                 " (", target.GO$Num_Genes[i], ")", sep="")
+  target.label[i] <- label
+}
+target.GO$Label <- target.label
+
 ## Bubble Plot
 bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
             geom_point(alpha=0.8) +
+            geom_label_repel(data=target.GO, aes(label=Label), size=2.5, segment.size=0.2, 
+                            box.padding=1.5, point.padding=1, max.overlaps=Inf,
+                            color="#003da8ff", alpha=0.8) +
             coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 1), expand=FALSE) +
             scale_size_area(max_size=15, guide=FALSE) +
             scale_color_gradientn(colors=c("#003da8ff", "#e5eeffff"),
@@ -321,7 +342,7 @@ bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, 
                                   breaks=log_breaks,
                                   labels=scales::trans_format("log10", scales::math_format(10^.x)),
                                   oob=scales::squish) +
-            guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3.4, "inch"),
+            guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3.5, "inch"),
                                           label.position="right", 
                                           title.position="left", 
                                           title.theme=element_text(angle=90, size=9.5, vjust=0.2))) +
@@ -345,5 +366,5 @@ bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, 
                   axis.ticks.length=unit(-2, "pt"))
 
 ggsave(bubble, filename="./SNU-BI1/FreeExpansionPlots/bubble.png", 
-       width=9, height=4, units='in', dpi=300)
+       width=9, height=4.5, units='in', dpi=300)
 
