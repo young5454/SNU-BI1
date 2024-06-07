@@ -64,7 +64,8 @@ write.table(meta.counts, "./SNU-BI1.Data/meta.counts.csv", sep=",")
 # 3. Filter counts 
 # ------------------------------------------------------------------------------
 ## Filter 1. <30 reads in RNA-seq
-rna.counts <- rowSums(meta.counts[, c(7,8,9)])
+meta.counts <- read.csv("./SNU-BI1.Data/meta.counts.csv", sep=",")
+# rna.counts <- rowSums(meta.counts[, c(7,8,9)])
 rna.counts1 <- meta.counts$RNA.control
 rna.counts2 <- meta.counts$RNA.siLin28a
 rna.counts3 <- meta.counts$RNA.siLuc
@@ -85,7 +86,7 @@ nrow(filt.meta.counts)  # 55158 -> 9004
 ### Normalize by dividing with total read sum of filtered counts
 norm.clip.35L33G <- filt.meta.counts$CLIP.35L33G / sum(filt.meta.counts$CLIP.35L33G)
 norm.rna.control <- filt.meta.counts$RNA.control / sum(filt.meta.counts$RNA.control)
-clip.enrichment <- log2(norm.clip.35L33G / norm.rna.control)  
+clip.enrichment <- log2(norm.clip.35L33G / norm.rna.control)
 
 ## Rden change
 ### Normalize by dividing with total read sum of filtered counts
@@ -105,6 +106,7 @@ clip.rden2 <- data.frame(clip.enrichment, rden.change)
 
 ## Filter any +/- Inf values
 filt.meta.counts <- filt.meta.counts[!is.infinite(filt.meta.counts$CLIP.Enrichment), ]
+nrow(filt.meta.counts)  # 9002
 
 ## Save filtered counts
 write.table(filt.meta.counts, "./SNU-BI1.Data/filt.meta.counts.csv", sep=",")
@@ -139,7 +141,6 @@ ggsave(scatter, filename="./SNU-BI1/FreeExpansionPlots/fig4d.ver3.png",
 ## Define gene list
 filt.gene.list <- filt.meta.counts$GeneID
 
-## Download Mapping Table - 2024.05.29 last mod.
 ## Download GOA DB - 2024.04.16 last mod.
 mus.goa <- readLines("./SNU-BI1.Data/goa_mouse.gaf")
 mus.goa <- mus.goa[!grepl("^!", mus.goa)]
@@ -157,16 +158,18 @@ colnames(mus.goa.df) <- c("DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier",
 ## Map MGIsymbol to GO term
 go.matched <- mus.goa.df[mus.goa.df$DB_Object_Symbol %in% filt.meta.counts$MGIsymbol, ]
 mapping.table <- go.matched[, c(3, 5)]   
-length(unique(mapping.table$DB_Object_Symbol)) # Total 7760 / 9004 genes are mapped
+length(unique(mapping.table$DB_Object_Symbol)) # Total 7760 / 9002 genes are mapped
 
 ## Map GO term to GO description
 go.terms <- mapping.table$GO_ID
 all.terms <- Term(GOTERM)
 matched.descriptions <- all.terms[go.terms]
 mapping.table$GO_Description <- matched.descriptions
+nrow(mapping.table)   # 184450
 
 ## Remove any redundant rows
 mapping.table <- mapping.table %>% distinct()
+nrow(mapping.table)   # 129371
 
 # ------------------------------------------------------------------------------
 # 6. GO term-to-Genelist Conversion
@@ -199,11 +202,11 @@ mw_rden <- function(go_to_genes, rden_df){
     ## Perform the Mann-Whitney U test
     mw.test <- wilcox.test(Rden.Change ~ In_GO, data=rden_df)
     
-    # Store the p-value and number of genes
+    ## Store the p-value and number of genes
     results[[go.term]] <- mw.test$p.value
     num.genes.list[[go.term]] <- num.genes
   }
-  ## # Convert the list of p-values to a vector
+  ## Convert the list of p-values to a vector
   p.values <- unlist(results)
   num.genes.list <- unlist(num.genes.list)
   
@@ -231,10 +234,9 @@ mw.results <- mw_rden(go_to_genes=go.to.genes,
 
 ## Sort according to P.adj
 mw.results.sorted <- mw.results[order(mw.results$p.adj), ]
-head(mw.results.sorted, 30)
 
 ## Save Mann-Whitney U test results
-write.table(mw.results.sorted, "./SNU-BI1.Data/mann.whitney.results.csv", sep=",")
+write.table(mw.results.sorted, "./SNU-BI1.Data/mw.results.csv", sep=",")
 
 # ------------------------------------------------------------------------------
 # 8. Filter Mann-Whitney U test data & Remove subset terms
@@ -284,6 +286,7 @@ rden.change.list <- list()
 for (i in 1:length(sig.mw.non.subset$GO_ID)){
   ## Define current GO term
   go.term <- sig.mw.non.subset$GO_ID[i]
+  
   ## Bring gene sets for current GO term
   gene.set <- unlist(go.to.genes[go.to.genes$GO_ID == go.term, ]$GeneList)
   
@@ -300,26 +303,27 @@ for (i in 1:length(sig.mw.non.subset$GO_ID)){
 clip.enrich.list <- unlist(clip.enrich.list)
 rden.change.list <- unlist(rden.change.list)
 
-## Add values to MW dataframe
+## Add values to M-W dataframe
 sig.mw.non.subset$Avg_CLIP <- clip.enrich.list
 sig.mw.non.subset$Avg_Rden <- rden.change.list
 
+## Save significant, nonsubset M-W test results
+write.table(sig.mw.non.subset, "./SNU-BI1.Data/mw.results.sig.nonsubset.csv", sep=",")
+
 # ------------------------------------------------------------------------------
-# 10. Plot Bubble Plot
+# 10. Plot Bubble Plot with M-W test: V1
 # ------------------------------------------------------------------------------
-# Reorder by p.adj so smaller p-values are plotted on top
+## Reorder by p.adj so smaller p-values are plotted on top
 sig.mw.non.subset <- sig.mw.non.subset[order(-sig.mw.non.subset$p.adj), ]
 
-# Define breaks for the color scale in log10 space
-log_breaks <- 10^seq(0, -50, by=-5)
-
-# Select the target pathways for labeling
+## Select the 12 target pathways for labeling
 target.GO <- sig.mw.non.subset[c("GO:0005737", "GO:0005634", "GO:0006334",
-                                 "GO:0005794", "GO:0005509", "GO:0009986",
+                                 "GO:0005509", "GO:0009986", "GO:0005794",
                                  "GO:0005788", "GO:0005539", "GO:0005789",
                                  "GO:0005576", "GO:0005783", "GO:0005739"), ]
-# Label for target GO
+## Label for target GO
 target.label <- list()
+
 for (i in 1:length(target.GO$GO_ID)){
   label <- paste0(target.GO$GO_Description[i], "\n",
                   target.GO$GO_ID[i],
@@ -328,27 +332,41 @@ for (i in 1:length(target.GO$GO_ID)){
 }
 target.GO$Label <- target.label
 
-## Bubble Plot
-bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
+## Define breaks for the color scale in log10 space
+log_breaks <- 10^seq(0, -60, by=-5)
+
+## Bubble Plot: V1 (Blue theme)
+bubble.v1 <- ggplot(sig.mw.non.subset, 
+                 aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
+            ## Label alpha value
             geom_point(alpha=0.8) +
-            geom_label_repel(data=target.GO, aes(label=Label), size=2.5, segment.size=0.2, 
-                            box.padding=1.5, point.padding=1, max.overlaps=Inf,
-                            color="#003da8ff", alpha=0.8) +
+            ## Plot axis limit and datapoint size
             coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 1), expand=FALSE) +
             scale_size_area(max_size=15, guide=FALSE) +
+            ## Label repulsion
+            geom_label_repel(data=target.GO, 
+                             aes(label=Label, fontface="bold", family="Arial"), 
+                             size=3, segment.size=0.3, box.padding=1.5,
+                             point.padding=0, max.overlaps=Inf, alpha=0.8,
+                             color="#003da8ff",
+                             segment.curvature=-1e-20) +
+            ## Colormap settings
             scale_color_gradientn(colors=c("#003da8ff", "#e5eeffff"),
                                   trans="log10",
-                                  limits=c(1e-50, 1),
+                                  limits=c(1e-60, 1),
                                   breaks=log_breaks,
                                   labels=scales::trans_format("log10", scales::math_format(10^.x)),
                                   oob=scales::squish) +
+            ## Legend 
             guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3.5, "inch"),
                                           label.position="right", 
                                           title.position="left", 
                                           title.theme=element_text(angle=90, size=9.5, vjust=0.2))) +
+            ## Axis annotations
             labs(x=TeX("Enrichment level of LIN28A-bound CLIP tags ($\\log_2$)"),
                  y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)"),
                  color="Term-specific enrichment confidence (False Discovery Rate)") +
+            ## Theme, gridlines, textsize
             scale_x_continuous(breaks=seq(-2, 2, by=0.5)) +
             scale_y_continuous(breaks=seq(-2, 1, by=0.5)) +
             theme(plot.background=element_rect(fill = "white"),
@@ -365,6 +383,90 @@ bubble <- ggplot(sig.mw.non.subset, aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, 
                   axis.ticks.y.right=element_line(size=0.25),
                   axis.ticks.length=unit(-2, "pt"))
 
-ggsave(bubble, filename="./SNU-BI1/FreeExpansionPlots/bubble.png", 
-       width=9, height=4.5, units='in', dpi=300)
+ggsave(bubble.v1, filename="./SNU-BI1/FreeExpansionPlots/bubble.v1.png", 
+       width=9, height=4.5, units='in', dpi=600)
 
+# ------------------------------------------------------------------------------
+# 10. Plot Bubble Plot with M-W test: V2
+# ------------------------------------------------------------------------------
+## Select the 12 target pathways for labeling
+target.for.labels <- c("GO:0005737", "GO:0005634", "GO:0006334",
+                       "GO:0005509", "GO:0009986", "GO:0005794",
+                       "GO:0005788", "GO:0005539", "GO:0005789",
+                       "GO:0005576", "GO:0005783", "GO:0005739")
+## Select datapoints for repulsion
+target.for.repulsion <- c("GO:0005515", "GO:0005829", "GO:0005654",
+                          "GO:0005886", "GO:0003674", "GO:0005524",
+                          "GO:0016020", "GO:0042802", "GO:0005730",
+                          "GO:0006491", "GO:0033627", "GO:0055078",   # 6 Rightmost
+                          "GO:0019367", "GO:0050901", "GO:0031995",
+                          "GO:0061621", "GO:0033263", "GO:0006177",   # 6 Leftmost
+                          "GO:0006164", "GO:0048026", "GO:0000244",
+                          "GO:0006084") 
+## Merge two targets                          
+target.for <- c(target.for.labels, target.for.repulsion)
+target.GO.v2 <- sig.mw.non.subset[target.for, ]
+
+## Label for target GO
+target.label.v2 <- list()
+for (i in 1:length(target.GO.v2$GO_ID)){
+  if (target.GO.v2$GO_ID[i] %in% target.for.labels){
+    label <- paste0(target.GO.v2$GO_Description[i], "\n",
+                    target.GO.v2$GO_ID[i],
+                    " (", target.GO.v2$Num_Genes[i], ")", sep="")
+  }else if (target.GO.v2$GO_ID[i] %in% target.for.repulsion){
+    label <- ""
+  }
+  target.label.v2[i] <- label
+}
+target.GO.v2$Label <- target.label.v2
+
+## Bubble Plot: V2 (Heatmap theme)
+bubble.v2 <- ggplot(sig.mw.non.subset, 
+                    aes(x=Avg_CLIP, y=Avg_Rden, size=Num_Genes, colour=p.adj)) +
+            ## Label alpha value
+            geom_point(alpha=0.8) +
+            ## Plot axis limit and datapoint size
+            coord_cartesian(xlim=c(-2, 2), ylim=c(-2, 1), expand=FALSE) +
+            scale_size_area(max_size=15, guide=FALSE) +
+            ## Label repulsion
+            geom_label_repel(data=target.GO.v2, 
+                             aes(label=Label, fontface="bold", family="Arial"), 
+                             size=3, segment.size=0.3, box.padding=1.5,
+                             point.padding=0, max.overlaps=Inf, alpha=1,
+                             segment.curvature=-1e-20) +
+            ## Colormap settings
+            scale_color_gradientn(colors=c("firebrick1", "dodgerblue"),
+                                  trans="log10",
+                                  limits=c(1e-60, 1),
+                                  breaks=log_breaks,
+                                  labels=scales::trans_format("log10", scales::math_format(10^.x)),
+                                  oob=scales::squish) +
+            ## Legend 
+            guides(colour=guide_colourbar(reverse=TRUE, barheight=unit(3.5, "inch"),
+                                          label.position="right", 
+                                          title.position="left", 
+                                          title.theme=element_text(angle=90, size=9.5, vjust=0.2))) +
+            ## Axis annotations
+            labs(x=TeX("Enrichment level of LIN28A-bound CLIP tags ($\\log_2$)"),
+                 y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)"),
+                 color="Term-specific enrichment confidence (False Discovery Rate)") +
+            ## Theme, gridlines, textsize
+            scale_x_continuous(breaks=seq(-2, 2, by=0.5)) +
+            scale_y_continuous(breaks=seq(-2, 1, by=0.5)) +
+            theme(plot.background=element_rect(fill = "white"),
+                  panel.background=element_rect(fill=NA),
+                  panel.grid.major=element_line(colour="grey", linetype="dashed", size=0.25),
+                  panel.border = element_rect(color = "black", fill = NA, size=0.5),
+                  plot.title=element_text(family="Arial", size=9.5),
+                  axis.title.x=element_text(family="Arial", size=10),
+                  axis.title.y=element_text(family="Arial", size=10),
+                  axis.text.x=element_text(size=8, color="black"),
+                  axis.text.y=element_text(size=8, color="black"),
+                  axis.ticks=element_line(size=0.25),
+                  axis.ticks.x.top=element_line(size=0.25),
+                  axis.ticks.y.right=element_line(size=0.25),
+                  axis.ticks.length=unit(-2, "pt"))
+
+ggsave(bubble.v2, filename="./SNU-BI1/FreeExpansionPlots/bubble.v2.png", 
+       width=9, height=4.5, units='in', dpi=600)
