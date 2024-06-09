@@ -102,21 +102,27 @@ rden.change <- log2(norm.density.silin28a / norm.density.siluc)
 ## Merge data to counts
 filt.meta.counts$CLIP.Enrichment <- clip.enrichment
 filt.meta.counts$Rden.Change <- rden.change
-clip.rden2 <- data.frame(clip.enrichment, rden.change)
 
 ## Filter any +/- Inf values
 filt.meta.counts <- filt.meta.counts[!is.infinite(filt.meta.counts$CLIP.Enrichment), ]
 nrow(filt.meta.counts)  # 9002
 
+## Conduct Pearson correlation
+clip.rden2 <- filt.meta.counts[, c(12, 13)]
+p.corr <- cor(clip.rden2$CLIP.Enrichment, clip.rden2$Rden.Change, method='pearson')
+p.corr  # 0.442616
+p.label <- expression(italic(r) == 0.4426)
+
 ## Save filtered counts
 write.table(filt.meta.counts, "./SNU-BI1.Data/filt.meta.counts.csv", sep=",")
 
 ## Plot - Fig4D
-scatter <- ggplot(clip.rden2, aes(x=clip.enrichment, y=rden.change)) + 
+scatter <- ggplot(clip.rden2, aes(x=clip.rden2$CLIP.Enrichment, y=clip.rden2$Rden.Change)) + 
             geom_point(size=0.2, alpha=0.25) + 
             labs(title=TeX("CLIP and ribosome footrprinting upon $\\textit{Lin28a}$ knockdown"),
                  x=TeX("LIN28A CLIP enrichment ($\\log_2$)"), 
                  y=TeX("Ribosome density change upon $\\textit{Lin28a}$ knockdown ($\\log_2$)")) +
+            annotate("text", x=1.7, y=-2.7, label=p.label, size=4, color="black", hjust=0) +
             coord_cartesian(xlim=c(-6, 4), ylim=c(-3, 2), expand=FALSE) +
             theme_classic() +
             theme(
@@ -470,3 +476,28 @@ bubble.v2 <- ggplot(sig.mw.non.subset,
 
 ggsave(bubble.v2, filename="./SNU-BI1/FreeExpansionPlots/bubble.v2.png", 
        width=9, height=4.5, units='in', dpi=600)
+
+# ------------------------------------------------------------------------------
+# 11. Additional: GSEA analysis
+# ------------------------------------------------------------------------------
+## Rank genes with descending Rden.Change
+filt.meta.counts <- filt.meta.counts[order(-filt.meta.counts$Rden.Change), ]
+ranked.genelist <- filt.meta.counts$Rden.Change
+names(ranked.genelist) <- filt.meta.counts$GeneID
+
+## Run ClusterProfiler GSEA
+mm.gsea <- gseGO(geneList=ranked.genelist,
+                 OrgDb="org.Mm.eg.db",
+                 ont="BP",
+                 keyType="ENSEMBL",
+                 minGSSize=4,
+                 maxGSSize=3000,
+                 pvalueCutoff=0.05,
+                 pAdjustMethod="BH")
+mm.gsea.result <- mm.gsea@result
+
+
+
+
+
+
