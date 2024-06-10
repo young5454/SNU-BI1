@@ -500,7 +500,7 @@ mm.gsea.bubble <- dotplot(mm.gsea, showCategory=10, split=".sign") +
                           
 ggsave(mm.gsea.bubble, filename = "./SNU-BI1/FreeExpansionPlots/bubble.gsea.png",
        width=12, height=12,
-       units='in', dpi=300)
+       units='in', dpi=600)
 
 ## Enrich plot - Activated Top 5 
 activated <- c(1, 2, 13, 16, 17)
