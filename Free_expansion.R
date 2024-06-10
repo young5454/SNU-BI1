@@ -495,11 +495,11 @@ mm.gsea <- gseGO(geneList=ranked.genelist,
 
 ## Dotplot
 options(enrichplot.colours = c("firebrick1","dodgerblue"))
-mm.gsea.bubble <- dotplot(mm.gsea, showCategory=10, split=".sign") + 
+mm.gsea.bubble <- dotplot(mm.gsea, showCategory=5, split=".sign") + 
                     facet_grid(.~.sign)
                           
 ggsave(mm.gsea.bubble, filename = "./SNU-BI1/FreeExpansionPlots/bubble.gsea.png",
-       width=12, height=12,
+       width=12, height=7,
        units='in', dpi=600)
 
 ## Enrich plot - Activated Top 5 
