@@ -490,14 +490,43 @@ mm.gsea <- gseGO(geneList=ranked.genelist,
                  OrgDb="org.Mm.eg.db",
                  ont="BP",
                  keyType="ENSEMBL",
-                 minGSSize=4,
-                 maxGSSize=3000,
                  pvalueCutoff=0.05,
                  pAdjustMethod="BH")
-mm.gsea.result <- mm.gsea@result
 
+## Dotplot
+options(enrichplot.colours = c("firebrick1","dodgerblue"))
+mm.gsea.bubble <- dotplot(mm.gsea, showCategory=10, split=".sign") + 
+                    facet_grid(.~.sign)
+                          
+ggsave(mm.gsea.bubble, filename = "./SNU-BI1/FreeExpansionPlots/bubble.gsea.png",
+       width=12, height=12,
+       units='in', dpi=300)
 
+## Enrich plot - Activated Top 5 
+activated <- c(1, 2, 13, 16, 17)
+for (geneSetID in activated) {
+  title <- mm.gsea$Description[geneSetID]  # Use the gene set description as the title
+  gplot <- gseaplot(mm.gsea, geneSetID=geneSetID, title=title)
+  
+  # Save the plot as a PNG file
+  filename = paste0("./SNU-BI1/FreeExpansionPlots/EnrichPlots/", 
+                    geneSetID, ".", "activated", ".", title, ".png")
+  ggsave(gplot, filename=filename,
+         width=10, height=8,
+         units='in', dpi=600)
+}
 
-
-
+## Enrich plot - Suppressed Top 5 
+suppressed <- c(3, 4, 5, 6, 7)
+for (geneSetID in suppressed) {
+  title <- mm.gsea$Description[geneSetID]  # Use the gene set description as the title
+  gplot <- gseaplot(mm.gsea, geneSetID=geneSetID, title=title)
+  
+  # Save the plot as a PNG file
+  filename = paste0("./SNU-BI1/FreeExpansionPlots/EnrichPlots/", 
+                    geneSetID, ".", "suppressed", ".", title, ".png")
+  ggsave(gplot, filename=filename,
+         width=10, height=8,
+         units='in', dpi=600)
+}
 
