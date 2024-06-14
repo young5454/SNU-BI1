@@ -498,7 +498,7 @@ options(enrichplot.colours = c("firebrick1","dodgerblue"))
 mm.gsea.bubble <- dotplot(mm.gsea, showCategory=5, split=".sign") + 
                     facet_grid(.~.sign)
                           
-ggsave(mm.gsea.bubble, filename = "./SNU-BI1/FreeExpansionPlots/bubble.gsea.png",
+ggsave(mm.gsea.bubble, filename="./SNU-BI1/FreeExpansionPlots/bubble.gsea.png",
        width=12, height=7,
        units='in', dpi=600)
 
@@ -529,4 +529,4 @@ for (geneSetID in suppressed) {
          width=10, height=8,
          units='in', dpi=600)
 }
-
+# ------------------------------------------------------------------------------
